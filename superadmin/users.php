@@ -4,10 +4,10 @@ require_once '../includes/auth.php';
 $auth->requireRole('superadmin');
 $pageTitle = "Manage Users";
 
-// Start session for flash messages
+// Start session if not already started
 if (session_status() == PHP_SESSION_NONE) session_start();
 
-// Handle AJAX Delete
+// AJAX DELETE handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
     $id = (int)$_POST['delete_user_id'];
     $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
     exit;
 }
 
-// Handle Add/Edit Form
+// Add/Edit Form handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_user'])) {
     $id = $_POST['user_id'] ?? 0;
     $email = $_POST['email'];
@@ -36,14 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_user'])) {
     $phone = $_POST['phone'];
 
     if ($id) {
-        // Update
         $pdo->prepare("UPDATE users SET email=?, role=?, status=? WHERE id=?")
             ->execute([$email, $role, $status, $id]);
         $pdo->prepare("UPDATE user_details SET first_name=?, last_name=?, phone=? WHERE user_id=?")
             ->execute([$first_name, $last_name, $phone, $id]);
         $_SESSION['success'] = "User updated successfully.";
     } else {
-        // Add
         $pdo->prepare("INSERT INTO users (email, role, status, created_at) VALUES (?, ?, ?, NOW())")
             ->execute([$email, $role, $status]);
         $newUserId = $pdo->lastInsertId();
@@ -52,11 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_user'])) {
         $_SESSION['success'] = "User added successfully.";
     }
 
-    header("Location: manage-users.php");
+    header("Location: users.php");
     exit();
 }
 
-// Get All Users
+// Fetch users
 $users = $pdo->query("
     SELECT u.id, u.email, u.role, u.status, u.created_at,
            CONCAT(ud.first_name, ' ', ud.last_name) AS name,
@@ -188,7 +186,7 @@ function clearForm() {
 
 function deleteUser(userId) {
     if (confirm('Are you sure you want to delete this user?')) {
-        fetch('manage-users.php', {
+        fetch('users.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ delete_user_id: userId })
@@ -196,8 +194,7 @@ function deleteUser(userId) {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                document.getElementById('user-row-' + userId).remove();
-                location.reload(); // reload to show flash message
+                location.reload(); // to show flash
             } else {
                 alert(data.error || 'Failed to delete user.');
             }
