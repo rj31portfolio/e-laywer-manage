@@ -1,4 +1,4 @@
-  <?php
+<?php
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
 
@@ -28,19 +28,19 @@ $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $subject = trim($_POST['subject']);
-    $categoryId = trim($_POST['category_id']);
-    $description = trim($_POST['description']);
-    $budget = trim($_POST['budget']);
-    $lawyerId = trim($_POST['lawyer_id']);
-    
+    $subject = isset($_POST['subject']) ? trim($_POST['subject']) : '';
+    $categoryId = isset($_POST['category_id']) ? trim($_POST['category_id']) : '';
+    $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+    $budget = isset($_POST['budget']) ? trim($_POST['budget']) : '';
+    $lawyerId = isset($_POST['lawyer_id']) ? trim($_POST['lawyer_id']) : '';
+
     // Validate inputs
     if (empty($subject) || empty($categoryId) || empty($description)) {
         $error = 'Subject, category and description are required';
     } else {
         try {
             $pdo->beginTransaction();
-            
+
             // Insert enquiry
             $stmt = $pdo->prepare("
                 INSERT INTO enquiries (client_id, category_id, subject, description, budget, status)
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([$auth->getUserId(), $categoryId, $subject, $description, $budget]);
             $enquiryId = $pdo->lastInsertId();
-            
+
             // If lawyer was specified, create assignment
             if (!empty($lawyerId)) {
                 $stmt = $pdo->prepare("
@@ -56,12 +56,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, 'active')
                 ");
                 $stmt->execute([$enquiryId, $lawyerId, $auth->getUserId()]);
-                
+
                 // Update enquiry status
                 $stmt = $pdo->prepare("UPDATE enquiries SET status = 'assigned' WHERE id = ?");
                 $stmt->execute([$enquiryId]);
             }
-            
+
             $pdo->commit();
             $success = 'Enquiry submitted successfully!';
         } catch (PDOException $e) {
@@ -79,11 +79,11 @@ require_once '../includes/header.php';
         <div class="card shadow">
             <div class="card-body">
                 <h3 class="card-title mb-4">New Legal Enquiry</h3>
-                
+
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
                 <?php endif; ?>
-                
+
                 <?php if ($success): ?>
                     <div class="alert alert-success"><?php echo htmlspecialchars($success); ?></div>
                     <div class="text-center mt-3">
@@ -100,12 +100,12 @@ require_once '../includes/header.php';
                                 <input type="hidden" name="lawyer_id" value="<?php echo $lawyer['id']; ?>">
                             </div>
                         <?php endif; ?>
-                        
+
                         <div class="mb-3">
                             <label for="subject" class="form-label">Subject</label>
                             <input type="text" class="form-control" id="subject" name="subject" required>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label for="category_id" class="form-label">Category</label>
                             <select class="form-select" id="category_id" name="category_id" required>
@@ -118,18 +118,18 @@ require_once '../includes/header.php';
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label for="description" class="form-label">Description</label>
                             <textarea class="form-control" id="description" name="description" rows="5" required></textarea>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label for="budget" class="form-label">Budget (₹)</label>
                             <input type="number" class="form-control" id="budget" name="budget" 
                                    value="<?php echo $lawyer ? $lawyer['consultation_fee'] : ''; ?>">
                         </div>
-                        
+
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-primary">Submit Enquiry</button>
                         </div>
@@ -143,4 +143,3 @@ require_once '../includes/header.php';
 <?php
 require_once '../includes/footer.php';
 ?>
-
