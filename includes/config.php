@@ -6,8 +6,8 @@ define('DB_PASS', '');
 define('DB_NAME', 'legal_platform');
 
 // Razorpay configuration
-define('RAZORPAY_KEY_ID', 'your_razorpay_key_id');
-define('RAZORPAY_KEY_SECRET', 'your_razorpay_key_secret');
+define('RAZORPAY_KEY_ID', 'rzp_live_jAGVmgwqfTTrPH');
+define('RAZORPAY_KEY_SECRET', 'eSUb2lRZwTlZhr7ZuFSp6GmW');
 
 // Site configuration
 define('SITE_NAME', 'LegalConnect');
