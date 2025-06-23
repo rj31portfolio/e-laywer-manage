@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/config.php';
-require_once '../includes/auth.php';
-require_once '../includes/db.php';
+require_once '../../includes/config.php';
+require_once '../../includes/auth.php';
+require_once '../../includes/db.php';
 
 header('Content-Type: application/json');
 
@@ -12,12 +12,13 @@ if (!$auth->isLoggedIn()) {
 }
 
 // Include Razorpay PHP library
-require_once '../assets/vendor/razorpay/razorpay-php/Razorpay.php';
+require_once '../../assets/vendor/razorpay/razorpay-php/Razorpay.php';
 use Razorpay\Api\Api;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     $assignmentId = filter_var($input['assignment_id'] ?? null, FILTER_VALIDATE_INT);
+    $amount = filter_var($input['amount'] ?? null, FILTER_VALIDATE_FLOAT);
     
     if (!$assignmentId || $assignmentId <= 0) {
         http_response_code(400);
@@ -25,15 +26,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
+    if (!$amount || $amount <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid amount']);
+        exit;
+    }
+
     try {
-        // Get assignment details with additional validation
+        // Verify assignment belongs to this client
         $stmt = $pdo->prepare("
-            SELECT a.id, e.client_id, l.consultation_fee, l.user_id as lawyer_id,
-                   u.name as client_name, u.email as client_email
+            SELECT a.id, e.client_id, l.user_id as lawyer_id
             FROM assignments a
             JOIN enquiries e ON a.enquiry_id = e.id
             JOIN lawyers l ON a.lawyer_id = l.user_id
-            JOIN users u ON e.client_id = u.id
             WHERE a.id = ? AND a.status = 'active'
         ");
         $stmt->execute([$assignmentId]);
@@ -45,17 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        // Validate client ownership
         if ($assignment['client_id'] != $auth->getUserId()) {
             http_response_code(403);
-            echo json_encode(['error' => 'Forbidden - You do not own this assignment']);
-            exit;
-        }
-        
-        // Validate consultation fee
-        if ($assignment['consultation_fee'] <= 0) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid consultation fee amount']);
+            echo json_encode(['error' => 'You are not authorized to pay for this assignment']);
             exit;
         }
         
@@ -63,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("
             SELECT id FROM payments 
             WHERE assignment_id = ? AND status = 'completed'
+            LIMIT 1
         ");
         $stmt->execute([$assignmentId]);
         
@@ -75,16 +73,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Initialize Razorpay API
         $api = new Api(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET);
         
-        // Create order with proper metadata
+        // Create order
         $orderData = [
             'receipt'         => 'CONSULT_' . $assignmentId . '_' . time(),
-            'amount'           => round($assignment['consultation_fee'] * 100), // Convert to paise
-            'currency'         => 'INR',
-            'payment_capture'  => 1,
-            'notes'           => [
+            'amount'         => round($amount * 100), // Convert to paise
+            'currency'       => 'INR',
+            'payment_capture' => 1,
+            'notes'          => [
                 'assignment_id' => $assignmentId,
                 'client_id'    => $assignment['client_id'],
-                'lawyer_id'     => $assignment['lawyer_id'],
+                'lawyer_id'    => $assignment['lawyer_id'],
                 'purpose'      => 'Legal Consultation Fee'
             ]
         ];
@@ -103,34 +101,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->execute([
             $assignmentId,
-            $assignment['consultation_fee'],
+            $amount,
             $razorpayOrder->id
         ]);
         
-        // Prepare response with necessary payment details
-        $response = [
+        // Get client details for prefill
+        $stmt = $pdo->prepare("
+            SELECT ud.first_name, ud.last_name, ud.phone 
+            FROM user_details ud 
+            WHERE ud.user_id = ?
+        ");
+        $stmt->execute([$auth->getUserId()]);
+        $client = $stmt->fetch();
+        
+        // Prepare response
+        echo json_encode([
             'success' => true,
             'order_id' => $razorpayOrder->id,
-            'amount' => $assignment['consultation_fee'],
-            'currency' => 'INR',
+            'amount' => $amount,
             'key' => RAZORPAY_KEY_ID,
             'name' => SITE_NAME,
             'description' => 'Professional Consultation Fee',
             'prefill' => [
-                'name' => $assignment['client_name'],
-                'email' => $assignment['client_email'],
-                'contact' => '' // You can add client phone if available
-            ],
-            'notes' => [
-                'assignment_id' => $assignmentId,
-                'client_id' => $assignment['client_id']
-            ],
-            'theme' => [
-                'color' => '#528FF0' // Customize as needed
+                'name' => $client['first_name'] . ' ' . $client['last_name'],
+                'email' => $_SESSION['email'],
+                'contact' => $client['phone'] ?? ''
             ]
-        ];
-        
-        echo json_encode($response);
+        ]);
         
     } catch (Exception $e) {
         error_log('Payment Error: ' . $e->getMessage());
